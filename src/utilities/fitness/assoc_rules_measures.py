@@ -288,6 +288,6 @@ def get_uncovered_patterns(df):
             covered_and_positive += 1
 
     not_covered_positives = (
-        (covered_patterns - covered_and_positive) / covered_patterns) * 100
+        (positive_patterns - covered_and_positive) / positive_patterns) * 100
 
     return not_covered_positives
