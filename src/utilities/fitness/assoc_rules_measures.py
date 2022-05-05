@@ -34,8 +34,8 @@ def get_metrics(antec_eval, y, consec, visualize):
     covered_targets = y[antec_eval]
 
     # If there are no covered targets, return 'np.nan'.
-    # if len(covered_targets) < 1:
-    #    return [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
+    if len(covered_targets) < 1:
+        return [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 0]
 
     antec_support = sum(antec_eval) / len(antec_eval)
     consec_support = sum(y == consec) / len(y)
@@ -152,7 +152,7 @@ def get_min_avg_support(df):
     avg_atec_support = sum(support_list) / \
         len(support_list)
 
-    lhs = str(minimum_antec_support) + ":" + str(avg_atec_support)
+    lhs = str(minimum_antec_support * 100) + ":" + str(avg_atec_support * 100)
 
     return lhs
 
@@ -173,7 +173,7 @@ def get_min_avg_confidence(df):
     minimum_conf = min(confidence_list)
     avg_conf = sum(confidence_list) / len(confidence_list)
 
-    conf = str(minimum_conf) + ":" + str(avg_conf)
+    conf = str(minimum_conf * 100) + ":" + str(avg_conf * 100)
 
     return conf
 
