@@ -15,7 +15,7 @@ def step(individuals):
         Variation
         Evaluation
         Replacement
-
+    
     :param individuals: The current generation, upon which a single
     evolutionary generation will be imposed.
     :return: The next generation of the population.
@@ -35,7 +35,7 @@ def step(individuals):
 
     # Diversification.
     if params['SHARING_FITNESS']:
-        new_pop = diversification(new_pop)
+        individuals = diversification(new_pop)
 
     # Replace the old population with the new population.
     individuals = replacement(new_pop, individuals)

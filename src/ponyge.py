@@ -7,13 +7,13 @@
 # Hereby licensed under the GNU GPL v3.
 """ Python GE implementation """
 
+import sys
+from algorithm.parameters import params, set_params
+from stats.stats import get_stats
 from utilities.algorithm.general import check_python_version
+import program_notifier as pn
 
 check_python_version()
-
-from stats.stats import get_stats
-from algorithm.parameters import params, set_params
-import sys
 
 
 def mane():
@@ -25,6 +25,9 @@ def mane():
 
     # Print final review
     get_stats(individuals, end=True)
+
+    # Send the notification to Telegram.
+    pn.send_notification()
 
 
 if __name__ == "__main__":

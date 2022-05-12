@@ -6,13 +6,14 @@ from os import path
 import numpy as np
 import pandas as pd
 from algorithm.parameters import params
-from utilities.algorithm.NSGA2 import compute_pareto_metrics
+from utilities.algorithm.NSGA2 import compute_pareto_metrics, compute_pareto_metrics_v2
 from utilities.algorithm.state import create_state
 from utilities.stats import trackers
 from utilities.stats.file_io import save_best_ind_to_file, \
-    save_first_front_to_file, save_stats_headers, save_stats_to_file
+    save_first_front_to_file, save_stats_headers, save_stats_to_file, save_values_to_file
 from utilities.stats.save_plots import save_pareto_fitness_plot, \
     save_plot_from_data
+from utilities.fitness.error_metric import f1_score, accuracy
 
 from utilities.fitness.assoc_rules_measures import get_cond_in_antec, get_attr_stats, get_metrics, get_min_avg_confidence, get_min_avg_support, get_uncovered_patterns, update_metrics
 from utilities.misc.nested_conds_2_rules_list import nested_conds_2_rules_list
@@ -68,11 +69,11 @@ def get_stats(individuals, end=False):
         stats.pop('ave_fitness', None)
 
         # Update stats.
-        get_moo_stats(individuals, end)
+        get_moo_stats_v2(individuals, end)
 
     else:
         # Single objective optimisation is being used.
-        get_soo_stats(individuals, end)
+        get_soo_stats_v2(individuals, end)
 
     if params['SAVE_STATE'] and not params['DEBUG'] and \
             stats['gen'] % params['SAVE_STATE_STEP'] == 0:
@@ -224,9 +225,302 @@ def get_moo_stats(individuals, end):
                 to_plot = [i[o] for i in trackers.best_fitness_list]
 
                 # Plot fitness data for objective o.
-                plotname = ff.__class__.__name__ + str(o)
+                try:
+                    # This is for objective function functions
+                    plotname = ff.__name__ + str(o)
+                except:
+                    # This is for objective function classes
+                    plotname = ff.__class__.__name__ + str(o)
 
                 save_plot_from_data(to_plot, plotname)
+
+            # TODO: PonyGE2 can currently only plot moo problems with 2
+            #  objectives.
+            # Check that the number of fitness objectives is not greater than 2
+            if params['FITNESS_FUNCTION'].num_obj > 2:
+                s = "stats.stats.get_moo_stats\n" \
+                    "Warning: Plotting of more than 2 simultaneous " \
+                    "objectives is not yet enabled in PonyGE2."
+                print(s)
+
+            else:
+                save_pareto_fitness_plot()
+
+    # Print statistics
+    if params['VERBOSE'] and not end:
+        print_generation_stats()
+        print_first_front_stats()
+
+    elif not params['SILENT']:
+        # Print simple display output.
+        perc = stats['gen'] / (params['GENERATIONS'] + 1) * 100
+        stdout.write("Evolution: %d%% complete\r" % perc)
+        stdout.flush()
+
+    # Generate test fitness on regression problems
+    if hasattr(params['FITNESS_FUNCTION'], "training_test") and end:
+
+        for ind in trackers.best_ever:
+            # Iterate over all individuals in the first front.
+
+            # Save training fitness.
+            ind.training_fitness = copy(ind.fitness)
+
+            # Evaluate test fitness.
+            ind.test_fitness = params['FITNESS_FUNCTION'](ind, dist='test')
+
+            # Set main fitness as training fitness.
+            ind.fitness = ind.training_fitness
+
+    # Save stats to list.
+    if params['VERBOSE'] or (not params['DEBUG'] and not end):
+        trackers.stats_list.append(copy(stats))
+
+    # Save stats to file.
+    if not params['DEBUG']:
+
+        if stats['gen'] == 0:
+            save_stats_headers(stats)
+
+        save_stats_to_file(stats, end)
+
+        if params['SAVE_ALL']:
+            save_first_front_to_file(stats, end, stats['gen'])
+
+        elif params['VERBOSE'] or end:
+            save_first_front_to_file(stats, end)
+
+    if end and not params['SILENT']:
+        print_final_moo_stats()
+
+
+def get_soo_stats_v2(individuals, end):
+    """
+    Generate the statistics for an evolutionary run with a single objective.
+    Save statistics to utilities.trackers.stats_list. Print statistics. Save
+    fitness plot information.
+
+    :param individuals: A population of individuals for which to generate
+    statistics.
+    :param end: Boolean flag for indicating the end of an evolutionary run.
+    :return: Nothing.
+    """
+
+    # Get best individual.
+    best = max(individuals)
+
+    if not trackers.best_ever or best > trackers.best_ever:
+        # Save best individual in trackers.best_ever.
+        trackers.best_ever = best
+
+    # Compute fitness on test for every generation
+    if hasattr(params['FITNESS_FUNCTION'], "training_test"):
+        trackers.test_first_best_ever = params['FITNESS_FUNCTION'](
+            trackers.best_ever, dist='test')
+
+        x_test = params['FITNESS_FUNCTION'].test_in
+        x_train = params['FITNESS_FUNCTION'].training_in
+        y_test = params['FITNESS_FUNCTION'].test_exp
+        y_train = params['FITNESS_FUNCTION'].training_exp
+        if params['OPTIMIZE_CONSTANTS']:
+            x = x_train
+            yhat_train = eval(trackers.best_ever.phenotype_consec_consts)
+            x = x_test
+            yhat_test = eval(trackers.best_ever.phenotype_consec_consts)
+        else:
+            x = x_train
+            yhat_train = eval(trackers.best_ever.phenotype)
+            x = x_test
+            yhat_test = eval(trackers.best_ever.phenotype)
+
+        if 'LISTENERS' in params:
+            for i in eval(params['LISTENERS']):
+                trackers.aux['train_' + i.__name__ +
+                             "_best_ever"] = i(y_train, yhat_train)
+                trackers.aux['test_'+i.__name__ +
+                             "_best_ever"] = i(y_test, yhat_test)
+
+    if end or params['VERBOSE'] or not params['DEBUG']:
+        # Update all stats.
+        update_stats(individuals, end)
+
+    # Save fitness plot information
+    if params['SAVE_PLOTS'] and not params['DEBUG']:
+        if not end:
+            trackers.best_fitness_list.append(trackers.best_ever.fitness)
+
+            if hasattr(params['FITNESS_FUNCTION'], "training_test"):
+                if 'LISTENERS' in params:
+                    for i in eval(params['LISTENERS']):
+                        if not 'test_'+i.__name__+"_best_ever_list" in trackers.aux:
+                            trackers.aux['test_'+i.__name__ +
+                                         "_best_ever_list"] = []
+                            trackers.aux['train_' + i.__name__ +
+                                         "_best_ever_list"] = []
+                        trackers.aux['train_' + i.__name__ + "_best_ever_list"].append(
+                            trackers.aux['train_' + i.__name__ + "_best_ever"])
+
+                        trackers.aux['test_' + i.__name__ + "_best_ever_list"].append(
+                            trackers.aux['test_' + i.__name__ + "_best_ever"])
+
+        if params['VERBOSE'] or end:
+            save_plot_from_data(trackers.best_fitness_list, "best_fitness")
+
+            if hasattr(params['FITNESS_FUNCTION'], 'training_test'):
+                if 'LISTENERS' in params:
+                    for i in eval(params['LISTENERS']):
+                        to_plot = [[i, j] for i, j in zip(trackers.aux['train_'+i.__name__+"_best_ever_list"],
+                                                          trackers.aux['test_'+i.__name__+"_best_ever_list"])]
+                        save_plot_from_data(to_plot,
+                                            i.__name__, label=['train', 'test'])
+                        save_values_to_file(to_plot,
+                                            i.__name__ + ".txt", header=['train', 'test'])
+            else:
+                if 'LISTENERS' in params:
+                    for i in eval(params['LISTENERS']):
+                        save_plot_from_data(trackers.aux['train_'+i.__name__+"_best_ever_list"],
+                                            i.__name__, label=['train'])
+                        save_values_to_file(trackers.aux['train_'+i.__name__+"_best_ever_list"],
+                                            i.__name__ + ".txt", header=['train'])
+
+    # Print statistics
+    if params['VERBOSE'] and not end:
+        print_generation_stats()
+
+    elif not params['SILENT']:
+        # Print simple display output.
+        perc = stats['gen'] / (params['GENERATIONS'] + 1) * 100
+        stdout.write("Evolution: %d%% complete\r" % perc)
+        stdout.flush()
+
+    # Generate test fitness on regression problems
+    if hasattr(params['FITNESS_FUNCTION'], "training_test") and end:
+        # Save training fitness.
+        trackers.best_ever.training_fitness = copy(trackers.best_ever.fitness)
+
+        # Evaluate test fitness.
+        trackers.best_ever.test_fitness = params['FITNESS_FUNCTION'](
+            trackers.best_ever, dist='test')
+
+        # Set main fitness as training fitness.
+        trackers.best_ever.fitness = trackers.best_ever.training_fitness
+
+    # Save stats to list.
+    if params['VERBOSE'] or (not params['DEBUG'] and not end):
+        trackers.stats_list.append(copy(stats))
+
+    # Save stats to file.
+    if not params['DEBUG']:
+
+        if stats['gen'] == 0:
+            save_stats_headers(stats)
+
+        save_stats_to_file(stats, end)
+
+        if params['SAVE_ALL']:
+            save_best_ind_to_file(stats, trackers.best_ever, end, stats['gen'])
+
+        elif params['VERBOSE'] or end:
+            save_best_ind_to_file(stats, trackers.best_ever, end)
+
+    if end and not params['SILENT']:
+        print_final_stats()
+
+    # Get the best 'params['ELITE_SIZE']' individuals of the population.
+    if params['VERBOSE'] or (end and params['ELITE_SIZE'] != None):
+        get_pop_metrics(individuals, params['ELITE_SIZE'])
+
+
+def get_moo_stats_v2(individuals, end):
+    """
+    Generate the statistics for an evolutionary run with multiple objectives.
+    Save statistics to utilities.trackers.stats_list. Print statistics. Save
+    fitness plot information.
+
+    This second version just uses compute_pareto_metrics_v2 instead of compute_pareto_metrics. FIXME In addition, it also computes fitness values on test dataset per generation, and outputs these values
+
+    :param individuals: A population of individuals for which to generate
+    statistics.
+    :param end: Boolean flag for indicating the end of an evolutionary run.
+    :return: Nothing.
+    """
+
+    # Compute the pareto front metrics for the population.
+    pareto = compute_pareto_metrics_v2(individuals)
+
+    # Save first front in trackers. Sort arbitrarily along first objective.
+    trackers.best_ever = sorted(pareto.fronts[0], key=lambda x: x.fitness[0])
+
+    # Compute fitness on test for every generation
+    if hasattr(params['FITNESS_FUNCTION'], "training_test"):
+        trackers.test_first_best_ever = params['FITNESS_FUNCTION'](
+            trackers.best_ever[0], dist='test')
+
+    # Store stats about pareto fronts.
+    stats['pareto_fronts'] = len(pareto.fronts)
+    stats['first_front'] = len(pareto.fronts[0])
+
+    if end or params['VERBOSE'] or not params['DEBUG']:
+        # Update all stats.
+        update_stats(individuals, end)
+
+    # Save fitness plot information
+    if params['SAVE_PLOTS'] and not params['DEBUG']:
+
+        # Initialise empty array for fitnesses for all inds on first pareto
+        # front.
+        all_arr = [[] for _ in range(params['FITNESS_FUNCTION'].num_obj)]
+
+        # Generate array of fitness values.
+        fitness_array = [ind.fitness for ind in trackers.best_ever]
+
+        # Add paired fitnesses to array for graphing.
+        for fit in fitness_array:
+            for o in range(params['FITNESS_FUNCTION'].num_obj):
+                all_arr[o].append(fit[o])
+
+        if not end:
+            trackers.first_pareto_list.append(all_arr)
+
+            # Append empty array to best fitness list.
+            trackers.best_fitness_list.append([])
+
+            # Get best fitness for each objective.
+            for o, ff in \
+                    enumerate(params['FITNESS_FUNCTION'].fitness_functions):
+                # Get sorted list of all fitness values for objective "o"
+                fits = sorted(all_arr[o], reverse=ff.maximise)
+
+                # Append best fitness to trackers list.
+                if hasattr(params['FITNESS_FUNCTION'], "training_test"):
+                    trackers.best_fitness_list[-1].append(
+                        [fits[0], trackers.test_first_best_ever[o]])
+                else:
+                    trackers.best_fitness_list[-1].append(fits[0])
+
+        if params['VERBOSE'] or end:
+
+            # Plot best fitness for each objective.
+            for o, ff in \
+                    enumerate(params['FITNESS_FUNCTION'].fitness_functions):
+                to_plot = [i[o] for i in trackers.best_fitness_list]
+
+                # Plot fitness data for objective o.
+                try:
+                    # This is for objective function functions
+                    plotname = ff.__name__ + str(o)
+                except:
+                    # This is for objective function classes
+                    plotname = ff.__class__.__name__ + str(o)
+
+                if hasattr(params['FITNESS_FUNCTION'], "training_test"):
+                    save_plot_from_data(to_plot, plotname,
+                                        label=['train', 'test'])
+                    save_values_to_file(
+                        to_plot, plotname+".txt", ['train', 'test'])
+                else:
+                    save_plot_from_data(to_plot, plotname)
+                    save_values_to_file(to_plot, plotname + ".txt")
 
             # TODO: PonyGE2 can currently only plot moo problems with 2
             #  objectives.
@@ -420,6 +714,9 @@ def get_pop_metrics(individuals, elite_size):
 
     individuals.sort(reverse=True)
 
+    # Save elite average fitness in '.txt'.
+    get_average_fitness(individuals)  # [:params['ELITE_SIZE']])
+
     phenotype_list = []
     fitness_list = []
 
@@ -499,9 +796,10 @@ def get_pop_metrics(individuals, elite_size):
                             columns=["Phenotype", "Fitness"])
 
     # Print and save data into '.csv' file at 'results' path.
-    print(df_trees)
+    # print(df_trees)
     filename = path.join(params['FILE_PATH'], "trees.csv")
     df_trees.to_csv(filename)
+    n_trees = len(df_trees)
     # print(df_trees.to_latex(index=True))
 
     #####################################################################
@@ -514,8 +812,12 @@ def get_pop_metrics(individuals, elite_size):
     # We want non-repeated rules.
     df_metrics = df_metrics.drop_duplicates(subset=["Rule"])
 
-    print()
-    print(df_metrics)
+    # FIXME: Discard association rules with empty covered patterns.
+    df_metrics = df_metrics.drop(
+        df_metrics[df_metrics["Covered patterns"] == 0].index)
+
+    # print()
+    # print(df_metrics)
 
     # Save metrics.
     filename = path.join(params['FILE_PATH'], "metrics.csv")
@@ -571,11 +873,37 @@ def get_pop_metrics(individuals, elite_size):
     uncovered_patterns = get_uncovered_patterns(
         df_metrics_updated_filtered["Covered patterns"])
 
-    df_extra = pd.DataFrame([[lhs, conf, n_rules, antec_counts, used_attr, use_freq, uncovered_patterns]],
-                            columns=[f"%LHS.Sup.\nMin:Avg", "%Conf.\nMin:Avg", "#rules", " |antecedent|\n" + str(n_antecedents), "Used attrs.", "%Attr.use freq.", "%Unc.pos."])
+    filename = path.join(params['FILE_PATH'], "metrics_extra.csv")
+
+    if path.exists(filename):
+        df_extra = pd.read_csv(filename)
+        df_extra = pd.concat([df_extra,
+                              pd.DataFrame([[lhs, conf, n_trees, n_rules, antec_counts, used_attr, use_freq['attr_max'],
+                                             use_freq['attr_q_3'],
+                                             use_freq['attr_median'],
+                                             use_freq['attr_q_2'],
+                                             use_freq['attr_min'], uncovered_patterns]],
+                                           columns=[f"%LHS.Sup.(Min:Avg)", "%Conf.(Min:Avg)", "#trees", "#rules", "|antecedent|",  # + str(n_antecedents),
+                                                    "Used attrs.", "%Attr.use freq. Max",
+                                                    "%Attr.use freq. Q3",
+                                                    "%Attr.use freq. Median",
+                                                    "%Attr.use freq. Q1",
+                                                    "%Attr.use freq. Min", "%Unc.pos."])],
+                             axis='index')
+    else:
+        df_extra = pd.DataFrame([[lhs, conf, n_trees, n_rules, antec_counts, used_attr, use_freq['attr_max'],
+                                  use_freq['attr_q_3'],
+                                  use_freq['attr_median'],
+                                  use_freq['attr_q_2'],
+                                  use_freq['attr_min'], uncovered_patterns]],
+                                columns=[f"%LHS.Sup.(Min:Avg)", "%Conf.(Min:Avg)", "#trees", "#rules", "|antecedent|",  # + str(n_antecedents),
+                                         "Used attrs.", "%Attr.use freq. Max",
+                                         "%Attr.use freq. Q3",
+                                         "%Attr.use freq. Median",
+                                         "%Attr.use freq. Q1",
+                                         "%Attr.use freq. Min", "%Unc.pos."])
 
     # Save extra metrics.
-    filename = path.join(params['FILE_PATH'], "metrics_extra.csv")
     df_extra.to_csv(filename, index=False)
 
     # Plot average fitness of the whole evolutionary process.
@@ -647,7 +975,7 @@ def get_phenotype_metrics(phenotype, phenotype_index):
     return [phenotype_index_list, rule_list, antec_support_list, consec_support_list, rule_support_list, precision_list, recall_list, lift_list, leverage_list, conviction_list, covered_targets_list]
 
 
-def get_elite_average_fitness(current_elite):
+def get_average_fitness(current_elite):
     """
     Function that get the average fitness of each elite in the whole
     evolutionary process. The average fitness is saved in a '.txt'
@@ -662,10 +990,13 @@ def get_elite_average_fitness(current_elite):
     Nothing.
     """
     sum = 0
+    count = 0
     for ind in current_elite:
-        sum += ind.fitness
+        if ind.invalid == False and np.isnan(ind.fitness).any() == False:
+            sum += ind.fitness
+            count += 1
 
-    average_elite_fitness = str(sum / len(current_elite))
+    average_elite_fitness = str(sum / count)
 
     file_name = path.join(params['FILE_PATH'], "average_fitness.txt")
     # Open the file in append & read mode ('a+')

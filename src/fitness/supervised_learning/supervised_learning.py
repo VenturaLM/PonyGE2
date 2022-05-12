@@ -32,14 +32,14 @@ class supervised_learning(base_ff):
         super().__init__()
 
         # Get training and test data
-        self.training_in, self.training_exp, self.test_in, self.test_exp = \
+        self.training_in, self.training_exp, self.test_in, self.test_exp, _ = \
             get_data(params['DATASET_TRAIN'], params['DATASET_TEST'])
 
         # Find number of variables.
         self.n_vars = np.shape(self.training_in)[1]  # sklearn convention
 
         # Regression/classification-style problems use training and test data.
-        if params['DATASET_TEST']:
+        if params['DATASET_TEST'] is not None:
             self.training_test = True
 
     def evaluate(self, ind, **kwargs):
@@ -69,13 +69,16 @@ class supervised_learning(base_ff):
         else:
             raise ValueError("Unknown dist: " + dist)
 
-        rules = nested_conds_2_rules_list(ind.phenotype)
+        # 3
+        # #TODO esto no irá en la versión final
+        # rules = nested_conds_2_rules_list(ind.phenotype)
 
-        aux = x[eval(rules[0])]
-        labels = y[eval(rules[0])]
+        # aux = x[eval(rules[0])]
+        # labels = y[eval(rules[0])]
 
-        # Get labels probabilities.
-        probabilities = get_labels_prob(labels)
+        # # Get labels probabilities.
+        # probabilities = get_labels_prob(labels)
+        #######################
 
         shape_mismatch_txt = """Shape mismatch between y and yhat. Please check
 that your grammar uses the `x[:, 0]` style, not `x[0]`. Please see change
@@ -109,7 +112,14 @@ at https://github.com/PonyGE/PonyGE2/issues/130."""
 
         else:
             # phenotype won't refer to C
-            yhat = eval(ind.phenotype)
+            # I do not why, but in some cases, very infrequently, I had an invalid phenotype. In particular, in one case it tried to test the condition (x['<feature_name>%] > 1.7), which misses a quote
+            try:
+                yhat = eval(ind.phenotype)
+            except:
+                if isinstance(params['ERROR_METRIC'], list):
+                    return [None for i in params['ERROR_METRIC']]
+                else:
+                    return None
             assert np.isrealobj(yhat)
             # Phenotypes that don't refer to x are constants, ie will
             # return a single value (not an array). That will work
@@ -160,7 +170,8 @@ at https://github.com/PonyGE/PonyGE2/issues/130."""
         """
 
         if isinstance(self.training_in, pd.DataFrame):
-            if self.training_in.iloc[:, i].dtype == 'object':
+            # self.training_in.iloc[:,i].dtype == 'object':
+            if not issubclass(self.training_in.iloc[:, i].dtype.type, np.number):
                 return True
             else:
                 return False

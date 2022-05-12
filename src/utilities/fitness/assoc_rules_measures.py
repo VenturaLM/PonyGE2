@@ -31,17 +31,24 @@ def get_metrics(antec_eval, y, consec, visualize):
     :param visualize: Boolean to show the metrics.
     :return list with all the computed metrics as follows: [antec_support, consec_support, rule_support, rule_precision, rule_recall, rule_lift, rule_leverage, rule_conviction, covered_patterns_list].
     """
-    covered_targets = y[antec_eval]
+    covered_targets = []
+    try:  # If we try to get rows with (-1.0 <= (-3.0 + -0.01)), which can be generated, that would produce an error
+        covered_targets = y[antec_eval]
+    except:
+        pass
 
     # If there are no covered targets, return 'np.nan'.
     if len(covered_targets) < 1:
-        return [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
+        return [np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 0]
 
     antec_support = sum(antec_eval) / len(antec_eval)
     consec_support = sum(y == consec) / len(y)
     rule_support = sum(covered_targets == consec) / len(y)
 
-    rule_precision = sum(covered_targets == consec) / len(covered_targets)
+    if len(covered_targets) == 0:
+        rule_precision = 0.0
+    else:
+        rule_precision = sum(covered_targets == consec) / len(covered_targets)
     rule_recall = sum(covered_targets == consec) / sum(y == consec)
     rule_lift = rule_precision / consec_support
     rule_leverage = rule_support - antec_support * consec_support
@@ -145,9 +152,13 @@ def get_min_avg_support(df):
     """
     support_list = df.tolist()
 
-    minimum_antec_support = min(support_list)
-    avg_atec_support = sum(support_list) / \
-        len(support_list)
+    try:
+        minimum_antec_support = min(support_list)
+        avg_atec_support = sum(support_list) / \
+            len(support_list)
+    except:
+        minimum_antec_support = 0
+        avg_atec_support = 0
 
     lhs = str(minimum_antec_support) + ":" + str(avg_atec_support)
 
@@ -167,8 +178,12 @@ def get_min_avg_confidence(df):
     """
     confidence_list = df.tolist()
 
-    minimum_conf = min(confidence_list)
-    avg_conf = sum(confidence_list) / len(confidence_list)
+    try:
+        minimum_conf = min(confidence_list)
+        avg_conf = sum(confidence_list) / len(confidence_list)
+    except:
+        minimum_conf = '-'
+        avg_conf = '-'
 
     conf = str(minimum_conf) + ":" + str(avg_conf)
 
@@ -195,7 +210,16 @@ def get_cond_in_antec(df):
     for rule in df:
         n_conditions.append(rule.count("&") + 1)
 
-    n_antecedents, antec_counts = np.unique(n_conditions, return_counts=True)
+    try:  # Perhaps, n_conditions if emtpy
+        max_conditions = np.max(n_conditions)
+
+        n_antecedents = list(range(max_conditions + 1))
+
+        antec_counts = [n_conditions.count(i) for i in n_antecedents]
+    except:
+        n_antecedents, antec_counts = [], []
+
+    # n_antecedents, antec_counts = np.unique(n_conditions, return_counts=True)
 
     return n_antecedents, antec_counts
 
@@ -238,14 +262,18 @@ def get_attr_stats(df, n_features):
         used_attr = "No rules obtained"
     else:
         # Attribute % use freq:
-        attr_max = (max(features_list) / n_rules) * 100
-        attr_q_3 = (np.quantile(features_list, .75) / n_rules) * 100
-        attr_median = (statistics.median(features_list) / n_rules) * 100
-        attr_q_2 = (np.quantile(features_list, .50) / n_rules) * 100
-        attr_min = (min(features_list) / n_rules) * 100
+        use_freq = {}
+        use_freq['attr_max'] = (max(features_list) / n_rules) * 100
+        use_freq['attr_q_3'] = (np.quantile(
+            features_list, .75) / n_rules) * 100
+        use_freq['attr_median'] = (
+            statistics.median(features_list) / n_rules) * 100
+        use_freq['attr_q_2'] = (np.quantile(
+            features_list, .50) / n_rules) * 100
+        use_freq['attr_min'] = (min(features_list) / n_rules) * 100
 
-        use_freq = "{" + str(attr_max) + "," + str(attr_q_3) + "," + \
-            str(attr_median) + "," + str(attr_q_2) + "," + str(attr_min) + "}"
+        # use_freq = "{" + str(attr_max) + "," + str(attr_q_3) + "," + \
+        #     str(attr_median) + "," + str(attr_q_2) + "," + str(attr_min) + "}"
 
     return used_attr, use_freq
 
@@ -287,7 +315,13 @@ def get_uncovered_patterns(df):
         if i in positive_patterns_list:
             covered_and_positive += 1
 
-    not_covered_positives = (
-        (positive_patterns - covered_and_positive) / positive_patterns) * 100
+    # FIXED creo que esto no es así. Debe ser el ratio de positivos no cubiertos. Quizás ((positivos - cubiertos y positivos / positivos)
+    try:
+        not_covered_positives = (
+            (covered_patterns - covered_and_positive) / covered_patterns) * 100
+        not_covered_positives = (
+            (positive_patterns - covered_and_positive) / positive_patterns) * 100
+    except:
+        not_covered_positives = 100
 
     return not_covered_positives

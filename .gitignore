@@ -8,3 +8,6 @@ Banknote_shuf.csv
 src/python_log.txt
 datasets/data.arff
 src/.vscode/launch.json
+src/parameters.json
+src/program_notifier.py
+src/ponyge.py
