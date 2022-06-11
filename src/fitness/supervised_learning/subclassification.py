@@ -22,7 +22,6 @@ class subclassification(classification):
         if params['ERROR_METRIC'] is None:
             params['ERROR_METRIC'] = f1_score
 
-        #self.maximise = params['ERROR_METRIC'].maximise
         self.maximise = False
 
     def evaluate(self, ind, **kwargs):
@@ -30,11 +29,16 @@ class subclassification(classification):
         Note that math functions used in the solutions are imported from either
         utilities.fitness.math_functions or called from numpy.
 
-        :param ind: An individual to be evaluated.
-        :param kwargs: An optional parameter for problems with training/test
+        Parameters
+        ----------
+        - ind: An individual to be evaluated.
+        - kwargs: An optional parameter for problems with training/test
         data. Specifies the distribution (i.e. training or test) upon which
         evaluation is to be performed.
-        :return: The fitness of the evaluated individual.
+
+        Returns
+        -------
+        - The fitness of the evaluated individual.
         """
 
         dist = kwargs.get('dist', 'training')
@@ -70,7 +74,8 @@ class subclassification(classification):
             aux = pd.DataFrame()
             labels = []
 
-            try: # If we try to get rows with (-1.0 <= (-3.0 + -0.01)), which can be generated, that would produce an error
+            # If we try to get rows with (-1.0 <= (-3.0 + -0.01)), which can be generated, that would produce an error
+            try:
                 aux = x[eval(rules[index])]
                 labels = y[eval(rules[index])]
             except:
