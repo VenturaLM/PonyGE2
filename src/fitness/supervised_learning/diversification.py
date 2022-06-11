@@ -70,40 +70,10 @@ def get_features_indexes(phenotype):
     attrs = phenotype.split('x[\'')[1:]
     attrs = [j for i in attrs for j in i.split('\']')][::2]
 
-    # phenotype_splitted = phenotype.split('\'')
     # TODO esto hay que multiplicarlo por 2^n con n la profundidad del subarbol donde aparece dicho atributo
     used_attrs = [
         i in attrs for i in params['FITNESS_FUNCTION'].training_in.columns]
     return np.where(used_attrs)[0]
-    ############ FIN CÓDIGO CARLOS##########
-
-    ############# CÓDIGO VENTURA##############
-    # subphenotype = phenotype.split("x.iloc")
-    #
-    # # Check if 'subphenotype' string has brackets.
-    # for i in range(len(subphenotype) - 1):
-    #     if subphenotype[i].find("[") == -1:
-    #         subphenotype.pop(i)
-    #
-    # # Get the unformatted features indexes.
-    # features = []
-    # for i in subphenotype:
-    #     opening_bracket = i.index("[")
-    #     closing_bracket = i.index("]")
-    #     features.append(i[opening_bracket:closing_bracket + 1])
-    #
-    # result = []
-    # for feature in features:
-    #     # Get the integers, which reference each feature.
-    #     result.append(re.findall(r'\d+', feature))
-    #
-    # # Flatten the result.
-    # result = [int(item) for sublist in result for item in sublist]
-    #
-    # # Get sorted wanted-unique indexes.
-    # #   To make them unique --> list(set(result)).
-    # return sorted(list(set(result)))
-    # FIN CÓDIGO VENTURA##################3
 
 
 def get_ind_used_features(individuals, n_dataset_features):
@@ -239,19 +209,6 @@ def new_similarity_approach(features, n_trees):
                 else:
                     A[i, j] = 0
                     A[j, i] = A[i, j]
-                    # aux.append(0)
-        # A.append(aux)
-
-    # Print similarity matrix.
-    # print('pairwise dense output:\n {}\n'.format(A))
-
-    # Get all similarities in one sorted list.
-    # for i in range(n_trees): #FIXED
-    #     for j in range(i):
-    #         all_similarities.append(A[i][j])
-    # all_similarities.sort()
-
-    # all_similarities = [i for j in A for i in j]
 
     all_similarities = A.flatten()
 
@@ -373,11 +330,6 @@ def update_fitness(individuals, crowding, n_trees):
             # NOTE: If fitness function best value is 1 instead of 0.
             #individuals[i].fitness = penalty / crowding[i]
             values.append(individuals[i].fitness)
-            # if crowding[i] > 0:
-            #     individuals[i].fitness = np.nan
-            #     individuals[i].invalid = True
-
-    # print('VALUES', np.mean(np.array(values)))
 
 
 def diversification(individuals):
@@ -422,8 +374,8 @@ def diversification(individuals):
         if params["SHARING_PROCEDURE"] == "distance":
             A, A_flat = compute_ind_distances(features, n_trees)
         if params["SHARING_PROCEDURE"] == "similarity":
-            #A, A_flat = compute_ind_similarities(features, n_trees)
-            A, A_flat = new_similarity_approach(features, n_trees)
+            A, A_flat = compute_ind_similarities(features, n_trees)
+            #A, A_flat = new_similarity_approach(features, n_trees)
 
         # Compute crowding.
         crowding = compute_crowding(

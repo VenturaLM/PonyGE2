@@ -11,3 +11,4 @@ src/.vscode/launch.json
 src/parameters.json
 src/program_notifier.py
 src/ponyge.py
+src/runExperiments.py

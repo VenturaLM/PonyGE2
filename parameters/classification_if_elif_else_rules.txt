@@ -27,6 +27,8 @@ REPLACEMENT:            generational
 SELECTION:              tournament
 TOURNAMENT_SIZE:        2
 VERBOSE: 				False
-SHARING_FITNESS:		True
+SHARING_FITNESS:		False
+#SHARING_PROCEDURE:		distance
+#SHARING_PROCEDURE:		similarity
 SHARING_PROCEDURE:		importance disimilarity
 EXPERIMENT_NAME:        prueba_con_codigo_Ventura
