@@ -397,6 +397,14 @@ def parse_cmd_args(arguments):
                              'as a list. Specify as many values as desired, '
                              'separated by spaces.')
 
+    parser.add_argument('--cross_validation_seed',
+                        dest='CROSS_VALIDATION_SEED',
+                        type=int,
+                        help='Mandatory if using CROSS_VALIDATION parameter.'
+                             'Seed for the random distribution of patterns'
+                             'into folds for the cross-validation context.'
+                             'It should be an intenger, such as 3, for instance')
+
     # OPTIONS
     parser.add_argument('--random_seed',
                         dest='RANDOM_SEED',
@@ -490,6 +498,19 @@ def parse_cmd_args(arguments):
                              ' other nearby agents in the environment. By default'
                              ' 0.5 probability is used. Higher the probability the time'
                              ' to find the solution would be reduced')
+
+    # DIVERSIFICATION
+    parser.add_argument('--sharing_fitness',
+                        dest='SHARING_FITNESS',
+                        action=bool,
+                        help='Boolean flag that activates or deactivates the diversification'
+                             ' in EA. Default = False.')
+
+    parser.add_argument('--sharing_procedure',
+                        dest='SHARING_PROCEDURE',
+                        action=str,
+                        help='Requires --sharing_fitness=True. Compute the crowding'
+                             ' in diversification based on the selected procedure.')
 
     # CACHING
     class CachingAction(argparse.Action):

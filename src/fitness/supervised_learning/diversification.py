@@ -1,9 +1,54 @@
-import re
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import DistanceMetric
 
 from algorithm.parameters import params
+
+
+def get_feature_importances_from_inds(individuals):
+    importances = []
+    features = params['FITNESS_FUNCTION'].training_in.columns
+    num_features = len(features)
+    null_importances = np.zeros(num_features)
+
+    for ind in individuals:
+        # Just for valid individuals; invalid individuals has phenotype = None and fitness = nan.
+        if ind.invalid != True and np.isnan(ind.fitness) != True:
+            importances.append(get_features_importances(ind.tree))
+        else:
+            importances.append(null_importances)
+
+    return importances
+
+
+def get_features_importances(tree, importances=None):
+    features = params['FITNESS_FUNCTION'].training_in.columns
+
+    if not isinstance(importances, np.ndarray) and importances == None:
+        num_features = len(features)
+        importances = np.zeros(num_features)
+        importances, _ = get_features_importances(tree, importances)
+        return importances
+    else:
+        if tree.children[0].root == 'np.where(':
+
+            _, this_condition, _, _, \
+                _ = tree.children[1].get_tree_info(
+                    params['BNF_GRAMMAR'].non_terminals.keys(), [], [])
+            these_features = [(index, i) for index, i in enumerate(
+                features) for j in this_condition if '\''+i+'\'' in j]
+
+            importances, num_leaves_left = get_features_importances(
+                tree.children[3], importances)
+            importances, num_leaves_right = get_features_importances(
+                tree.children[5], importances)
+            num_leaves = num_leaves_right + num_leaves_left
+
+            for feature in [i[0] for i in these_features]:
+                importances[feature] += num_leaves
+            return importances, num_leaves
+        else:
+            return importances, 1
 
 
 def get_features_indexes(phenotype):
@@ -19,31 +64,15 @@ def get_features_indexes(phenotype):
     -------
     - result: sorted list with the wanted-unique indexes.
     """
-    subphenotype = phenotype.split("x.iloc")
 
-    # Check if 'subphenotype' string has brackets.
-    for i in range(len(subphenotype) - 1):
-        if subphenotype[i].find("[") == -1:
-            subphenotype.pop(i)
+    ############ CÓDIGO CARLOS##############
+    attrs = phenotype.split('x[\'')[1:]
+    attrs = [j for i in attrs for j in i.split('\']')][::2]
 
-    # Get the unformatted features indexes.
-    features = []
-    for i in subphenotype:
-        opening_bracket = i.index("[")
-        closing_bracket = i.index("]")
-        features.append(i[opening_bracket:closing_bracket + 1])
-
-    result = []
-    for feature in features:
-        # Get the integers, which reference each feature.
-        result.append(re.findall(r'\d+', feature))
-
-    # Flatten the result.
-    result = [int(item) for sublist in result for item in sublist]
-
-    # Get sorted wanted-unique indexes.
-    #   To make them unique --> list(set(result)).
-    return sorted(list(set(result)))
+    # TODO esto hay que multiplicarlo por 2^n con n la profundidad del subarbol donde aparece dicho atributo
+    used_attrs = [
+        i in attrs for i in params['FITNESS_FUNCTION'].training_in.columns]
+    return np.where(used_attrs)[0]
 
 
 def get_ind_used_features(individuals, n_dataset_features):
@@ -147,18 +176,20 @@ def new_similarity_approach(features, n_trees):
     ones = [i.count(1) for i in similarities]
 
     # Compute similarity matrix over the features.
-    A = []  # Similarity matrix.
+    # A = []  # Similarity matrix. #FIXED
+    A = np.zeros((n_trees, n_trees))
     for i in reversed(range(len(similarities))):
-        aux = []
-        for j in reversed(range(i, len(similarities))):
+        # aux = []
+        for j in reversed(range(i)):  # FIXED, len(similarities))):
             if i == j:
                 # Same element, similarity = 1.
-                aux.append(1)
+                A[i, i] = 1
+                # aux.append(1)
             else:
                 # Boolean array of common elements:
                 # 0: is not common / 1: is common.
-                commons = [1 if tuple(item)[0] == tuple(
-                    item)[1] else 0 for item in zip(similarities[i], similarities[j])]
+                commons = [1 if tuple(item)[0] == 1 and tuple(
+                    item)[1] == 1 else 0 for item in zip(similarities[i], similarities[j])]  # FIXED Antes contaba todas las coincidencias
 
                 # Count the amount of commons.
                 n_commons = commons.count(1)
@@ -170,17 +201,15 @@ def new_similarity_approach(features, n_trees):
                     minimum = min(ones[i], ones[j])
 
                 # Append to the similarity matrix the similarity factor.
-                aux.append(n_commons/minimum)
-        A.append(aux)
+                if minimum > 0:
+                    A[i, j] = n_commons/minimum
+                    A[j, i] = A[i, j]
+                    # aux.append(n_commons/minimum)
+                else:
+                    A[i, j] = 0
+                    A[j, i] = A[i, j]
 
-    # Print similarity matrix.
-    # print('pairwise dense output:\n {}\n'.format(A))
-
-    # Get all similarities in one sorted list.
-    for i in range(n_trees):
-        for j in range(i):
-            all_similarities.append(A[i][j])
-    all_similarities.sort()
+    all_similarities = A.flatten()
 
     return A, all_similarities
 
@@ -244,7 +273,9 @@ def compute_crowding(A, A_flat, n_trees, procedure):
     if procedure == "distance":
         # Use percentile .25 as threshold.
         p_25 = np.percentile(A_flat, 25)
+        p_25 = np.max(A_flat)
 
+        # NOTE: If fitness function best value is 1 instead of 0 --> np.ones.
         crowding = np.zeros(n_trees)
         for i in reversed(range(n_trees)):
             for j in reversed(range(i)):
@@ -255,6 +286,7 @@ def compute_crowding(A, A_flat, n_trees, procedure):
         # Use percentile .75 as threshold.
         p_75 = np.percentile(A_flat, 75)
 
+        # NOTE: If fitness function best value is 1 instead of 0 --> np.ones.
         crowding = np.zeros(n_trees)
         for i in reversed(range(n_trees)):
             for j in reversed(range(i)):
@@ -282,16 +314,21 @@ def update_fitness(individuals, crowding, n_trees):
     # Since the last fitness are 'np.nan', we have to search where is the first
     # last numerical value. This value is set as the penalty.
     for ind in individuals[::-1]:
-        if np.isnan(ind.fitness) == False:
+        if np.isnan(ind.fitness) == False and ind.fitness > 0.0:
             penalty = ind.fitness
             break
 
     # Update fitness.
+    values = []
     for i in range(n_trees):
         # Some individuals are not valid, so that, they have fitness = 'np.nan'.
         # Just taking in account those whose fitness is a number.
         if not np.isnan(individuals[i].fitness):
+            # NOTE: If fitness function best value is 0 instead of 1.
             individuals[i].fitness += (crowding[i] * penalty)
+            # NOTE: If fitness function best value is 1 instead of 0.
+            #individuals[i].fitness = penalty / crowding[i]
+            values.append(individuals[i].fitness)
 
 
 def diversification(individuals):
@@ -323,22 +360,45 @@ def diversification(individuals):
     n_dataset_features = len(x.iloc[0, :])
     n_trees = len(individuals)
 
-    features = get_ind_used_features(individuals, n_dataset_features)
+    if params['SHARING_PROCEDURE'] == 'importance disimilarity':
+        importances = get_feature_importances_from_inds(individuals)
+        A, A_flat = ratio_new_rules(importances)
+        crowding = compute_crowding(A, A_flat, n_trees, procedure='distance')
+    else:
+        features = get_ind_used_features(individuals, n_dataset_features)
 
-    # Compute distances/similarities. Use params["SHARING_PROCEDURE"] for setting
-    # the parameter: "distance" for distance matrix and "similarity" for similarity
-    # matrix.
-    if params["SHARING_PROCEDURE"] == "distance":
-        A, A_flat = compute_ind_distances(features, n_trees)
-    if params["SHARING_PROCEDURE"] == "similarity":
-        #A, A_flat = compute_ind_similarities(features, n_trees)
-        A, A_flat = new_similarity_approach(features, n_trees)
+        # Compute distances/similarities. Use params["SHARING_PROCEDURE"] for setting
+        # the parameter: "distance" for distance matrix and "similarity" for similarity
+        # matrix.
+        if params["SHARING_PROCEDURE"] == "distance":
+            A, A_flat = compute_ind_distances(features, n_trees)
+        if params["SHARING_PROCEDURE"] == "similarity":
+            A, A_flat = compute_ind_similarities(features, n_trees)
+            #A, A_flat = new_similarity_approach(features, n_trees)
 
-    # Compute crowding.
-    crowding = compute_crowding(
-        A, A_flat, n_trees, procedure=params["SHARING_PROCEDURE"])
+        # Compute crowding.
+        crowding = compute_crowding(
+            A, A_flat, n_trees, procedure=params["SHARING_PROCEDURE"])
 
     # Update fitness.
     update_fitness(individuals, crowding, n_trees)
 
     return individuals
+
+
+def ratio_new_rules(importances):
+    num_trees = len(importances)
+    A = np.zeros((num_trees, num_trees))
+
+    for i, imp_i in zip(range(num_trees), importances):
+        for j, imp_j in zip(range(i+1, num_trees), importances[i+1:]):
+            differences = np.sum(np.abs(imp_i - imp_j))
+            #max_num_rules = min(np.sum(imp_i), np.sum(imp_j))
+            max_num_rules = 1
+            try:
+                A[i, j] = differences / max_num_rules
+            except:
+                A[i, j] = 0
+            A[j, i] = A[i, j]
+
+    return A, A.flatten()
