@@ -502,13 +502,15 @@ def parse_cmd_args(arguments):
     # DIVERSIFICATION
     parser.add_argument('--sharing_fitness',
                         dest='SHARING_FITNESS',
-                        action=bool,
+                        type=bool,
+                        default=False,
                         help='Boolean flag that activates or deactivates the diversification'
                              ' in EA. Default = False.')
 
     parser.add_argument('--sharing_procedure',
                         dest='SHARING_PROCEDURE',
-                        action=str,
+                        type=str,
+                        default=None,
                         help='Requires --sharing_fitness=True. Compute the crowding'
                              ' in diversification based on the selected procedure.')
 
